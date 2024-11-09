@@ -3,3 +3,4 @@ data/*
 .DS_Store
 test_results/*
 *.pth
+__pycache__/*
