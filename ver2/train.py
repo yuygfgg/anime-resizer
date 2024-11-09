@@ -1,11 +1,11 @@
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import os
 from PIL import Image
+from network import UpsampleResNet
 
 if torch.cuda.is_available():
     device = torch.device("cuda")
@@ -16,60 +16,6 @@ else:
 
 print(f"Using device: {device}")
 
-class UpsampleResNet(nn.Module):
-    def __init__(self, in_channels=3, num_blocks=8, hidden_channels=96):
-        super(UpsampleResNet, self).__init__()
-        
-        self.initial_conv = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1)
-        )
-        
-        self.res_blocks = nn.Sequential(
-            *[ResidualBlock(hidden_channels) for _ in range(num_blocks)]
-        )
-        
-        self.pre_upscale = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True)
-        )
-        
-        self.upscale = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels * 4, kernel_size=3, padding=1),
-            nn.PixelShuffle(2),
-            nn.ReLU(True)
-        )
-        
-        self.final = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(hidden_channels, in_channels, kernel_size=3, padding=1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        initial = self.initial_conv(x)
-        res = self.res_blocks(initial)
-        res = res + initial
-        up = self.pre_upscale(res)
-        up = self.upscale(up)
-        out = self.final(up)
-        return out
-
-class ResidualBlock(nn.Module):
-    def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-
-    def forward(self, x):
-        res = x
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        return x + res
 
 class ImageBlockDataset(Dataset):
     def __init__(self, image_folder, block_size=32, scale_factor=2):
@@ -93,21 +39,18 @@ class ImageBlockDataset(Dataset):
                 'w_blocks': w_blocks
             })
         
-        # 计算整个数据集的总样本数
         self.total_samples = sum([info['h_blocks'] * info['w_blocks'] for info in self.sample_info])
 
     def __len__(self):
         return self.total_samples
 
     def __getitem__(self, idx):
-        # 找到对应的图片和块
         for info in self.sample_info:
             num_blocks = info['h_blocks'] * info['w_blocks']
             if idx < num_blocks:
                 h_idx = idx // info['w_blocks']
                 w_idx = idx % info['w_blocks']
                 
-                # 延迟加载图片
                 img_path = os.path.join(self.image_folder, info['img_file'])
                 img_hr = np.load(img_path)
                 img_hr = torch.from_numpy(img_hr).permute(2, 0, 1).float() / 255.0
@@ -143,6 +86,7 @@ def split_image(img, block_size=32, overlap=6):
     
     for i in range(h_blocks):
         for j in range(w_blocks):
+            
             start_h = min(i * stride, h - block_size)
             start_w = min(j * stride, w - block_size)
             
@@ -198,38 +142,38 @@ def test_and_save(model, test_img_tensor, epoch, step):
         blocks, positions, (h_blocks, w_blocks) = split_image(img_padded, block_size=32)
         
         upscaled_blocks = []
-        bilinear_blocks = []
+        bicubic_blocks = []
         
         for i in range(0, len(blocks), 4):
             batch_blocks = blocks[i:i+4].to(device)
             batch_upscaled = model(batch_blocks)
-            batch_bilinear = F.interpolate(batch_blocks, scale_factor=2, mode='bilinear', align_corners=False)
+            batch_bicubic = F.interpolate(batch_blocks, scale_factor=2, mode='bicubic', align_corners=False)
             
             upscaled_blocks.extend(batch_upscaled.cpu())
-            bilinear_blocks.extend(batch_bilinear.cpu())
+            bicubic_blocks.extend(batch_bicubic.cpu())
         
         output = merge_blocks(upscaled_blocks, positions, original_shape)
-        bilinear_output = merge_blocks(bilinear_blocks, positions, original_shape)
+        bicubic_output = merge_blocks(bicubic_blocks, positions, original_shape)
         
         if pad_h > 0 or pad_w > 0:
             h, w = original_shape[1:]
             output = output[:, :h*2-pad_h*2, :w*2-pad_w*2]
-            bilinear_output = bilinear_output[:, :h*2-pad_h*2, :w*2-pad_w*2]
+            bicubic_output = bicubic_output[:, :h*2-pad_h*2, :w*2-pad_w*2]
         
         output = torch.clamp(output, 0, 1)
-        bilinear_output = torch.clamp(bilinear_output, 0, 1)
+        bicubic_output = torch.clamp(bicubic_output, 0, 1)
         
         output_img = (output.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
-        bilinear_img = (bilinear_output.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+        bicubic_img = (bicubic_output.permute(1, 2, 0).numpy() * 255).astype(np.uint8)
         
         os.makedirs('test_results', exist_ok=True)
         Image.fromarray(output_img).save(f'test_results/epoch{epoch+1}_step{step+1}_model.png')
-        Image.fromarray(bilinear_img).save(f'test_results/epoch{epoch+1}_step{step+1}_bilinear.png')
+        Image.fromarray(bicubic_img).save(f'test_results/epoch{epoch+1}_step{step+1}_bicubic.png')
     
     model.train()
 
 def train_model():
-    train_dataset = ImageBlockDataset(image_folder="/Users/a1/nnedi4/data", 
+    train_dataset = ImageBlockDataset(image_folder="../data", 
                                     block_size=32, 
                                     scale_factor=2)
     
@@ -261,8 +205,10 @@ def train_model():
             outputs = model(lr_blocks)
             loss = F.l1_loss(outputs, hr_blocks)
 
-            bilinear_outputs = F.interpolate(lr_blocks, scale_factor=2, mode='bilinear', align_corners=False).to(device)
-            bilinear_loss = F.l1_loss(bilinear_outputs, hr_blocks)
+            if step % 100 == 0:
+                # 计算 bicubic 放大的损失
+                bicubic_outputs = F.interpolate(lr_blocks, scale_factor=2, mode='bicubic', align_corners=False).to(device)
+                bicubic_loss = F.l1_loss(bicubic_outputs, hr_blocks)
 
             loss.backward()
             optimizer.step()
@@ -273,7 +219,8 @@ def train_model():
                 print(f"Epoch [{epoch+1}/{num_epochs}] "
                       f"Step [{step+1}/{len(train_loader)}] "
                       f"Model Loss: {loss.item():.4f} "
-                      f"bilinear Loss: {bilinear_loss.item():.4f}")
+                      f"bicubic Loss: {bicubic_loss.item():.4f}"
+                )
             
             if (step + 1) % 2000 == 0:
                 test_and_save(model, test_img_tensor.to(device), epoch, step)
@@ -289,18 +236,6 @@ def train_model():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] *= 0.1
                 print("Reduced learning rate by 10 times.")
-            
-            # 在 35000 step 后减小学习率
-            if (step + 1) == 35000 and epoch == 0:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] *= 0.5
-                print("Reduced learning rate by 2 times.")
-            
-            # 在 50000 step 后减小学习率
-            if (step + 1) == 50000 and epoch == 0:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] *= 0.5
-                print("Reduced learning rate by 2 times.")
 
         avg_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.4f}")
