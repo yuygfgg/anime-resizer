@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 for img in *.jpg *.jpeg *.png *.bmp *.gif; do
     if [ -f "$img" ]; then  # 检查文件是否存在
         # 使用 identify 读取图片分辨率

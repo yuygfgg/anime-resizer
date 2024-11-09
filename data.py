@@ -53,7 +53,6 @@ def extract_random_frames(video_path, output_dir, num_frames=5):
     try:
         os.makedirs(output_dir, exist_ok=True)
 
-        # 我们不使用 ffprobe，而是直接用 ffmpeg 随机抽取帧
         total_random_attempts = num_frames * 5  # 给定一定的重试次数，以确保最终能获得足够的有效帧
         valid_frames_extracted = 0
 

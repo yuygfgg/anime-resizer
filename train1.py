@@ -20,43 +20,38 @@ class UpsampleResNet(nn.Module):
     def __init__(self, in_channels=3, num_blocks=8, hidden_channels=96):
         super(UpsampleResNet, self).__init__()
         
-        # 初始特征提取
         self.initial_conv = nn.Sequential(
             nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True),
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1)
         )
         
-        # 残差块
         self.res_blocks = nn.Sequential(
             *[ResidualBlock(hidden_channels) for _ in range(num_blocks)]
         )
         
-        # 上采样前的处理
         self.pre_upscale = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True)
         )
         
-        # 上采样
         self.upscale = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels * 4, kernel_size=3, padding=1),
             nn.PixelShuffle(2),
             nn.ReLU(True)
         )
         
-        # 最终处理
         self.final = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True),
             nn.Conv2d(hidden_channels, in_channels, kernel_size=3, padding=1),
-            nn.Sigmoid()  # 确保输出在 [0,1] 范围内
+            nn.Sigmoid()
         )
 
     def forward(self, x):
         initial = self.initial_conv(x)
         res = self.res_blocks(initial)
-        res = res + initial  # 全局残差连接
+        res = res + initial
         up = self.pre_upscale(res)
         up = self.upscale(up)
         out = self.final(up)
@@ -84,7 +79,6 @@ class ImageBlockDataset(Dataset):
         self.scale_factor = scale_factor
         self.sample_info = []
         
-        # 预计算每张图片可以生成的块的数量
         for img_file in self.image_files:
             img_path = os.path.join(image_folder, img_file)
             img_hr = np.load(img_path)
@@ -138,24 +132,20 @@ def pad_image(img, block_size=32):
     return F.pad(img, padding, mode='reflect'), pad_h, pad_w
 
 def split_image(img, block_size=32, overlap=6):
-    """将图像分割成重叠的块"""
     c, h, w = img.shape
     blocks = []
     positions = []
     
     stride = block_size - overlap
     
-    # 计算需要覆盖的块数
     h_blocks = (h + stride - 1) // stride
     w_blocks = (w + stride - 1) // stride
     
     for i in range(h_blocks):
         for j in range(w_blocks):
-            # 计算起始位置
             start_h = min(i * stride, h - block_size)
             start_w = min(j * stride, w - block_size)
             
-            # 确保最后一块始终从图像边缘开始
             if i == h_blocks - 1:
                 start_h = h - block_size
             if j == w_blocks - 1:
@@ -168,7 +158,6 @@ def split_image(img, block_size=32, overlap=6):
     return torch.stack(blocks), positions, (h_blocks, w_blocks)
 
 def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
-    """使用加权合并重叠的块"""
     c, h, w = original_shape
     scaled_h, scaled_w = h * scale_factor, w * scale_factor
     output = torch.zeros((c, scaled_h, scaled_w), device=blocks[0].device)
@@ -177,7 +166,6 @@ def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
     block_size = blocks[0].shape[-1]
     overlap_size = overlap * scale_factor
     
-    # 创建加权掩码
     mask = torch.ones((block_size, block_size), device=blocks[0].device)
     if overlap_size > 0:
         mask[:overlap_size, :] = torch.linspace(0, 1, overlap_size).view(-1, 1)
@@ -197,7 +185,6 @@ def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
         output[:, start_h:end_h, start_w:end_w] += block_part * mask_part.unsqueeze(0)
         weight[start_h:end_h, start_w:end_w] += mask_part
     
-    # 防止除零
     weight = weight.clamp(min=1e-8)
     output = output / weight.unsqueeze(0)
     
@@ -274,7 +261,6 @@ def train_model():
             outputs = model(lr_blocks)
             loss = F.l1_loss(outputs, hr_blocks)
 
-            # 计算 bilinear 放大的损失
             bilinear_outputs = F.interpolate(lr_blocks, scale_factor=2, mode='bilinear', align_corners=False).to(device)
             bilinear_loss = F.l1_loss(bilinear_outputs, hr_blocks)
 

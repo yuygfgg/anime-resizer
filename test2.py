@@ -44,10 +44,10 @@ class UpsampleResNet(nn.Module):
     def forward(self, x):
         initial = self.initial_conv(x)
         res = self.res_blocks(initial)
-        res = res + initial  # Global residual connection
+        res = res + initial
 
         attention = self.attention(res)
-        res = res * attention  # Apply attention
+        res = res * attention
 
         up = self.pre_upscale(res)
         up = self.upscale(up)
@@ -85,7 +85,6 @@ def split_image(img, block_size=32, overlap=None):
     
     stride = block_size - overlap
     
-    # Offsets for different passes
     offsets = [(0, 0), (0, stride // 2), (stride // 2, 0), (stride // 2, stride // 2)]
     
     for offset_h, offset_w in offsets:

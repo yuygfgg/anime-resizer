@@ -55,10 +55,10 @@ class UpsampleResNet(nn.Module):
     def forward(self, x):
         initial = self.initial_conv(x)
         res = self.res_blocks(initial)
-        res = res + initial  # Global residual connection
+        res = res + initial
 
         attention = self.attention(res)
-        res = res * attention  # Apply attention
+        res = res * attention
 
         up = self.pre_upscale(res)
         up = self.upscale(up)
@@ -87,7 +87,6 @@ class ImageBlockDataset(Dataset):
         self.scale_factor = scale_factor
         self.sample_info = []
         
-        # 预计算每张图片可以生成的块的数量
         for img_file in self.image_files:
             img_path = os.path.join(image_folder, img_file)
             img_hr = np.load(img_path)
@@ -102,21 +101,18 @@ class ImageBlockDataset(Dataset):
                 'w_blocks': w_blocks
             })
         
-        # 计算整个数据集的总样本数
         self.total_samples = sum([info['h_blocks'] * info['w_blocks'] for info in self.sample_info])
 
     def __len__(self):
         return self.total_samples
 
     def __getitem__(self, idx):
-        # 找到对应的图片和块
         for info in self.sample_info:
             num_blocks = info['h_blocks'] * info['w_blocks']
             if idx < num_blocks:
                 h_idx = idx // info['w_blocks']
                 w_idx = idx % info['w_blocks']
                 
-                # 延迟加载图片
                 img_path = os.path.join(self.image_folder, info['img_file'])
                 img_hr = np.load(img_path)
                 img_hr = torch.from_numpy(img_hr).permute(2, 0, 1).float() / 255.0
@@ -141,24 +137,21 @@ def pad_image(img, block_size=32):
     return F.pad(img, padding, mode='reflect'), pad_h, pad_w
 
 def split_image(img, block_size=32, overlap=6):
-    """将图像分割成重叠的块"""
     c, h, w = img.shape
     blocks = []
     positions = []
     
     stride = block_size - overlap
     
-    # 计算需要覆盖的块数
     h_blocks = (h + stride - 1) // stride
     w_blocks = (w + stride - 1) // stride
     
     for i in range(h_blocks):
         for j in range(w_blocks):
-            # 计算起始位置
+            
             start_h = min(i * stride, h - block_size)
             start_w = min(j * stride, w - block_size)
             
-            # 确保最后一块始终从图像边缘开始
             if i == h_blocks - 1:
                 start_h = h - block_size
             if j == w_blocks - 1:
@@ -171,7 +164,6 @@ def split_image(img, block_size=32, overlap=6):
     return torch.stack(blocks), positions, (h_blocks, w_blocks)
 
 def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
-    """使用加权合并重叠的块"""
     c, h, w = original_shape
     scaled_h, scaled_w = h * scale_factor, w * scale_factor
     output = torch.zeros((c, scaled_h, scaled_w), device=blocks[0].device)
@@ -180,7 +172,6 @@ def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
     block_size = blocks[0].shape[-1]
     overlap_size = overlap * scale_factor
     
-    # 创建加权掩码
     mask = torch.ones((block_size, block_size), device=blocks[0].device)
     if overlap_size > 0:
         mask[:overlap_size, :] = torch.linspace(0, 1, overlap_size).view(-1, 1)
@@ -200,7 +191,6 @@ def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=6):
         output[:, start_h:end_h, start_w:end_w] += block_part * mask_part.unsqueeze(0)
         weight[start_h:end_h, start_w:end_w] += mask_part
     
-    # 防止除零
     weight = weight.clamp(min=1e-8)
     output = output / weight.unsqueeze(0)
     
