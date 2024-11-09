@@ -9,38 +9,43 @@ class UpsampleResNet(nn.Module):
     def __init__(self, in_channels=3, num_blocks=8, hidden_channels=96):
         super(UpsampleResNet, self).__init__()
         
+        # 初始特征提取
         self.initial_conv = nn.Sequential(
             nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True),
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1)
         )
         
+        # 残差块
         self.res_blocks = nn.Sequential(
             *[ResidualBlock(hidden_channels) for _ in range(num_blocks)]
         )
         
+        # 上采样前的处理
         self.pre_upscale = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True)
         )
         
+        # 上采样
         self.upscale = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels * 4, kernel_size=3, padding=1),
             nn.PixelShuffle(2),
             nn.ReLU(True)
         )
         
+        # 最终处理
         self.final = nn.Sequential(
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
             nn.ReLU(True),
             nn.Conv2d(hidden_channels, in_channels, kernel_size=3, padding=1),
-            nn.Sigmoid()
+            nn.Sigmoid()  # 确保输出在 [0,1] 范围内
         )
 
     def forward(self, x):
         initial = self.initial_conv(x)
         res = self.res_blocks(initial)
-        res = res + initial
+        res = res + initial  # 全局残差连接
         up = self.pre_upscale(res)
         up = self.upscale(up)
         out = self.final(up)
