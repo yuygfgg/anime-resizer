@@ -1,72 +1,10 @@
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 from PIL import Image
 from tqdm import tqdm
-
-class UpsampleResNet(nn.Module):
-    def __init__(self, in_channels=3, num_blocks=16, hidden_channels=72):
-        super(UpsampleResNet, self).__init__()
-        
-        self.initial_conv = nn.Sequential(
-            nn.Conv2d(in_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True)
-        )
-        
-        self.res_blocks = nn.Sequential(
-            *[ResidualBlock(hidden_channels) for _ in range(num_blocks)]
-        )
-        
-        self.attention = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=1),
-            nn.Sigmoid()
-        )
-        
-        self.pre_upscale = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True)
-        )
-        
-        self.upscale = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels * 4, kernel_size=3, padding=1),
-            nn.PixelShuffle(2),
-            nn.ReLU(True)
-        )
-        
-        self.final = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
-            nn.ReLU(True),
-            nn.Conv2d(hidden_channels, in_channels, kernel_size=3, padding=1),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        initial = self.initial_conv(x)
-        res = self.res_blocks(initial)
-        res = res + initial
-
-        attention = self.attention(res)
-        res = res * attention
-
-        up = self.pre_upscale(res)
-        up = self.upscale(up)
-        out = self.final(up)
-        return out
-
-class ResidualBlock(nn.Module):
-    def __init__(self, channels):
-        super(ResidualBlock, self).__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-
-    def forward(self, x):
-        res = x
-        x = self.conv1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        return x + res
+import argparse
+from network import UpsampleResNet
 
 def pad_image(img, block_size=32):
     c, h, w = img.shape
@@ -140,7 +78,8 @@ def merge_blocks(blocks, positions, original_shape, scale_factor=2, overlap=16):
     
     return output
 
-def inference(model, image_path, output_path, block_size=32, batch_size=4):
+def inference(model, image_path, output_path, batch_size=4):
+    block_size = 32  # 固定 block_size 为训练时的值
     img = Image.open(image_path).convert('RGB')
     img_np = np.array(img)
     img_tensor = torch.from_numpy(img_np).float().permute(2, 0, 1) / 255.0
@@ -188,6 +127,12 @@ def inference(model, image_path, output_path, block_size=32, batch_size=4):
     print(f"Results saved to {output_path}_model.png and {output_path}_bicubic.png")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Image Upscaling with UpsampleResNet")
+    parser.add_argument('--input', type=str, required=True, help="Path to the input image file")
+    parser.add_argument('--output', type=str, required=True, help="Path for saving the output image file")
+    parser.add_argument('--batch_size', type=int, default=4, help="Batch size for processing image blocks")
+    args = parser.parse_args()
+
     model = UpsampleResNet()
     model.load_state_dict(torch.load('ver2.pth'))
     
@@ -200,7 +145,4 @@ if __name__ == "__main__":
 
     model = model.to(device)
     
-    input_path = "haruhi08_16360.png"
-    output_path = "haruhi08_16360_ver2"
-    
-    inference(model, input_path, output_path, block_size=32, batch_size=4)
+    inference(model, args.input, args.output, batch_size=args.batch_size)
