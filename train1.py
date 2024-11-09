@@ -7,8 +7,13 @@ import numpy as np
 import os
 from PIL import Image
 
-# 检查 MPS 是否可用
-device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
+if torch.cuda.is_available():
+    device = torch.device("cuda")
+elif torch.backends.mps.is_available():
+    device = torch.device("mps")
+else:
+    device = torch.device("cpu")
+
 print(f"Using device: {device}")
 
 class UpsampleResNet(nn.Module):
