@@ -1,6 +1,9 @@
 *.png
 data/*
 .DS_Store
+*/.DS_Store
 test_results/*
+*/test_results/*
 *.pth
 __pycache__/*
+*/__pycache__/*
