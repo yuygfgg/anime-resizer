@@ -1,9 +1,6 @@
 raw: 
 ![raw](https://github.com/user-attachments/assets/7192a185-f095-4115-a6ec-ce06e43244f5)
 
-2x_bicubic:
-![2x_bicubic](https://github.com/user-attachments/assets/e4cc42cf-9d0e-409a-8bc5-b22fd29eca45)
-
 2x_nnedi3:
 ![2x_nnedi3](https://github.com/user-attachments/assets/612d273e-9702-4e25-af78-ad95ff2cbe40)
 
