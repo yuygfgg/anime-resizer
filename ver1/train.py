@@ -127,18 +127,6 @@ def train_model():
                 for param_group in optimizer.param_groups:
                     param_group['lr'] *= 0.1
                 print("Reduced learning rate by 10 times.")
-            
-            # 在 35000 step 后减小学习率
-            if (step + 1) == 35000 and epoch == 0:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] *= 0.5
-                print("Reduced learning rate by 2 times.")
-            
-            # 在 50000 step 后减小学习率
-            if (step + 1) == 50000 and epoch == 0:
-                for param_group in optimizer.param_groups:
-                    param_group['lr'] *= 0.5
-                print("Reduced learning rate by 2 times.")
 
         avg_loss = running_loss / len(train_loader)
         print(f"Epoch [{epoch+1}/{num_epochs}] Average Loss: {avg_loss:.4f}")
