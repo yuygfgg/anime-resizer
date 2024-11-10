@@ -1,4 +1,4 @@
-Only a resizer.
+Just a resizer.
 
 As slow as waifu2x, but performing no better than nnedi3.
 
