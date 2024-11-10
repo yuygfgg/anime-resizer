@@ -1,3 +1,10 @@
+Only a resizer.
+
+As slow as waifu2x, but performing no better than nnedi3.
+
+- ver1: Simple, faster. Trained on bilinear downscaled images. A bit sharper than nnedi3.
+- ver2: A bit more complex, slower. Trained on bicubic downscaled images. A bit sharper than ver1.
+
 raw: 
 ![raw](https://github.com/user-attachments/assets/7192a185-f095-4115-a6ec-ce06e43244f5)
 
