@@ -150,7 +150,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     model = UpsampleResNet()
-    model.load_state_dict(torch.load('ver2.pth', map_location='cpu'))
+    model.load_state_dict(torch.load('best_model.pth', map_location='cpu'))
     
     if torch.cuda.is_available():
         device = torch.device("cuda")
